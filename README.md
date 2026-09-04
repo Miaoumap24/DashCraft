@@ -58,7 +58,7 @@ dashcraft/
 Clone the repository and install dependencies:
 
 ```bash
-git clone [https://github.com/your-username/dashcraft.git](https://github.com/your-username/dashcraft.git)
+git clone https://github.com/Miaoumap24/dashcraft.git
 cd dashcraft
 pip install -r requirements.txt
 
