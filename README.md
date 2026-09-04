@@ -34,5 +34,5 @@ Make sure you have Python 3.8 or higher installed on your machine.
 
 1. **Clone the repository**
    ```bash
-   git clone [https://github.com/Miaoumap24/dashcraft.git
+   git clone https://github.com/Miaoumap24/dashcraft.git
    cd dashcraft
