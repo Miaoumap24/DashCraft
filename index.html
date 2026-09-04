@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DashCraft</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f111a;
+      --card-bg: #1a1d2d;
+      --accent-cpu: #ff5376;
+      --accent-ram: #00f2fe;
+      --accent-mc: #00e676;
+      --accent-disk: #ffb74d;
+      --text: #e2e8f0;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2.2rem;
+      background: linear-gradient(135deg, var(--accent-ram), var(--accent-mc));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 1rem;
+      opacity: 0.8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .value {
+      font-size: 2.2rem;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+    .online { background: rgba(0,230,118,0.2); color: var(--accent-mc); }
+    .offline { background: rgba(255,83,118,0.2); color: var(--accent-cpu); }
+    
+    .chart-container {
+      position: relative;
+      height: 150px;
+      width: 100%;
+    }
+    
+    .console-card {
+      grid-column: 1 / -1;
+    }
+    .console-logs {
+      background: #090a10;
+      border-radius: 8px;
+      padding: 12px;
+      height: 140px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      border: 1px solid #2a2d3d;
+    }
+    .console-input-group {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: #090a10;
+      border: 1px solid #2a2d3d;
+      border-radius: 6px;
+      padding: 10px;
+      color: #fff;
+      font-family: monospace;
+    }
+    button {
+      background: var(--accent-mc);
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>DashCraft</h1>
+    <small style="opacity: 0.6">Minecraft Monitoring System</small>
+  </header>
+
+  <div class="grid">
+    <!-- System Telemetry -->
+    <div class="card">
+      <h2>CPU</h2>
+      <div id="cpu-val" class="value" style="color: var(--accent-cpu)">0%</div>
+      <div class="chart-container">
+        <canvas id="cpuChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>RAM</h2>
+      <div id="ram-val" class="value" style="color: var(--accent-ram)">0%</div>
+      <div class="chart-container">
+        <canvas id="ramChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Minecraft Server Status -->
+    <div class="card">
+      <h2>Minecraft Server</h2>
+      <div id="mc-status" class="badge offline">Offline</div>
+      <div id="mc-players" class="value" style="color: var(--accent-mc)">0 / 0</div>
+      <div style="font-size:0.9rem; opacity:0.8;">
+        <p>Ping: <span id="mc-ping">0</span> ms</p>
+        <p>Version: <span id="mc-version">-</span></p>
+        <p>Players: <span id="mc-list">None</span></p>
+      </div>
+    </div>
+
+    <!-- RCON -->
+    <div class="card console-card">
+      <h2>RCON</h2>
+      <div id="console-logs" class="console-logs">
+        <div style="color: #666;">> RCON Connection Ready...</div>
+      </div>
+      <div class="console-input-group">
+        <input type="text" id="cmd-input" placeholder="Enter a Minecraft Command...">
+        <button onclick="sendCommand()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Config Chart.js
+    const createChartConfig = (label, color) => ({
+      type: 'line',
+      data: {
+        labels: Array(15).fill(''),
+        datasets: [{
+          label: label,
+          data: Array(15).fill(0),
+          borderColor: color,
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { min: 0, max: 100, ticks: { color: '#666' }, grid: { color: '#2a2d3d' } }
+        }
+      }
+    });
+
+    const cpuChart = new Chart(document.getElementById('cpuChart'), createChartConfig('CPU', '#ff5376'));
+    const ramChart = new Chart(document.getElementById('ramChart'), createChartConfig('RAM', '#00f2fe'));
+
+    const updateChartData = (chart, newValue) => {
+      chart.data.datasets[0].data.shift();
+      chart.data.datasets[0].data.push(newValue);
+      chart.update('none');
+    };
+
+    // WebSocket
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+
+      if (payload.type === 'metrics') {
+        // UPD System
+        document.getElementById('cpu-val').innerText = `${payload.system.cpu}%`;
+        document.getElementById('ram-val').innerText = `${payload.system.ram}%`;
+        updateChartData(cpuChart, payload.system.cpu);
+        updateChartData(ramChart, payload.system.ram);
+
+        // UPD Minecraft
+        const mc = payload.minecraft;
+        const statusEl = document.getElementById('mc-status');
+        if (mc.online) {
+          statusEl.innerText = "En ligne";
+          statusEl.className = "badge online";
+          document.getElementById('mc-players').innerText = `${mc.players_online} / ${mc.players_max}`;
+          document.getElementById('mc-ping').innerText = mc.latency;
+          document.getElementById('mc-version').innerText = mc.version;
+          document.getElementById('mc-list').innerText = mc.players_list.length > 0 ? mc.players_list.join(', ') : 'Aucun';
+        } else {
+          statusEl.innerText = "Hors ligne";
+          statusEl.className = "badge offline";
+          document.getElementById('mc-players').innerText = "- / -";
+          document.getElementById('mc-ping').innerText = "0";
+          document.getElementById('mc-version').innerText = "Inaccessible";
+          document.getElementById('mc-list').innerText = "-";
+        }
+      } 
+      else if (payload.type === 'rcon_response') {
+        const logs = document.getElementById('console-logs');
+        logs.innerHTML += `<div style="color: var(--accent-ram)">> /${payload.command}</div>`;
+        logs.innerHTML += `<div style="color: #fff; margin-bottom: 8px;">${payload.response}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+      }
+    };
+
+    function sendCommand() {
+      const input = document.getElementById('cmd-input');
+      const command = input.value.trim();
+      if (command && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          action: 'rcon_command',
+          command: command
+        }));
+        input.value = '';
+      }
+    }
+
+    document.getElementById('cmd-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendCommand();
+    });
+  </script>
+</body>
+</html>
